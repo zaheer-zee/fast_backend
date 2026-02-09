@@ -213,7 +213,7 @@ class VerifyAgent:
                         "num": 3  # Get top 3 results
                     }
                     
-                    response = requests.get("https://serpapi.com/search", params=params, timeout=10)
+                    response = requests.get("https://serpapi.com/search", params=params, timeout=30)
                     response.raise_for_status()
                     result = response.json()
                     
