@@ -3,7 +3,6 @@ import json
 from typing import List, Optional
 from datetime import datetime
 from dotenv import load_dotenv
-from googleapiclient.discovery import build
 from groq import Groq
 from models import Claim, Evidence, ScoreResponse, CrisisAlert, CrisisResponse
 import requests
@@ -13,8 +12,7 @@ load_dotenv()
 
 GROQ_API_KEY = os.getenv("GROQ_API_KEY")
 NEWSDATA_API_KEY = os.getenv("NEWSDATA_API_KEY")
-GOOGLE_API_KEY = os.getenv("GOOGLE_API_KEY")
-GOOGLE_SEARCH_ENGINE_ID = os.getenv("GOOGLE_SEARCH_ENGINE_ID")
+SERPAPI_KEY = os.getenv("SERPAPI_KEY")
 
 class ScanAgent:
     def __init__(self):
@@ -204,31 +202,32 @@ class VerifyAgent:
             if not claim.text:
                 claim.text = "Verify uploaded image content"
 
-        # Perform Search Verification using Google Custom Search
+        # Perform Search Verification using SerpAPI
         if claim.text:
             try:
-                if GOOGLE_API_KEY and GOOGLE_SEARCH_ENGINE_ID:
-                    print(f"Searching Google for: {claim.text}")
+                if SERPAPI_KEY:
+                    print(f"Searching with SerpAPI for: {claim.text}")
                     
-                    # Build Google Custom Search service
-                    service = build("customsearch", "v1", developerKey=GOOGLE_API_KEY)
+                    # Call SerpAPI
+                    params = {
+                        "q": claim.text,
+                        "api_key": SERPAPI_KEY,
+                        "num": 3  # Get top 3 results
+                    }
                     
-                    # Execute search
-                    result = service.cse().list(
-                        q=claim.text,
-                        cx=GOOGLE_SEARCH_ENGINE_ID,
-                        num=3  # Get top 3 results
-                    ).execute()
+                    response = requests.get("https://serpapi.com/search", params=params, timeout=10)
+                    response.raise_for_status()
+                    result = response.json()
                     
-                    # Extract search results
-                    if 'items' in result:
-                        for item in result['items']:
+                    # Extract organic search results
+                    if 'organic_results' in result and len(result['organic_results']) > 0:
+                        for item in result['organic_results'][:3]:
                             claim.evidence.append(Evidence(
                                 source=item.get('title', 'Unknown'),
                                 content=item.get('snippet', ''),
                                 url=item.get('link', '')
                             ))
-                        print(f"Found {len(result['items'])} search results")
+                        print(f"Found {len(result['organic_results'][:3])} search results")
                     else:
                         print("No search results found")
                         # Add fallback evidence
@@ -238,15 +237,15 @@ class VerifyAgent:
                             url=""
                         ))
                 else:
-                    print("WARNING: Google API credentials not set")
-                    # Add fallback evidence when API keys are missing
+                    print("WARNING: SERPAPI_KEY not set")
+                    # Add fallback evidence when API key is missing
                     claim.evidence.append(Evidence(
                         source="Configuration Required",
-                        content=f"Search functionality requires Google API configuration. Claim: {claim.text}",
+                        content=f"Search functionality requires SerpAPI configuration. Claim: {claim.text}",
                         url=""
                     ))
             except Exception as e:
-                print(f"ERROR: Google Custom Search failed: {e}")
+                print(f"ERROR: SerpAPI search failed: {e}")
                 # Add error as evidence so array is never empty
                 claim.evidence.append(Evidence(
                     source="Search Error",
