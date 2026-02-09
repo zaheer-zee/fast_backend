@@ -3,7 +3,7 @@ import json
 from typing import List, Optional
 from datetime import datetime
 from dotenv import load_dotenv
-from duckduckgo_search import DDGS
+from googleapiclient.discovery import build
 from groq import Groq
 from models import Claim, Evidence, ScoreResponse, CrisisAlert, CrisisResponse
 import requests
@@ -13,6 +13,8 @@ load_dotenv()
 
 GROQ_API_KEY = os.getenv("GROQ_API_KEY")
 NEWSDATA_API_KEY = os.getenv("NEWSDATA_API_KEY")
+GOOGLE_API_KEY = os.getenv("GOOGLE_API_KEY")
+GOOGLE_SEARCH_ENGINE_ID = os.getenv("GOOGLE_SEARCH_ENGINE_ID")
 
 class ScanAgent:
     def __init__(self):
@@ -202,24 +204,53 @@ class VerifyAgent:
             if not claim.text:
                 claim.text = "Verify uploaded image content"
 
-        # Perform Search Verification
+        # Perform Search Verification using Google Custom Search
         if claim.text:
             try:
-                print(f"Searching DuckDuckGo for: {claim.text}")
-                with DDGS() as ddgs:
-                    results = list(ddgs.text(claim.text, max_results=3))
-                    for r in results:
+                if GOOGLE_API_KEY and GOOGLE_SEARCH_ENGINE_ID:
+                    print(f"Searching Google for: {claim.text}")
+                    
+                    # Build Google Custom Search service
+                    service = build("customsearch", "v1", developerKey=GOOGLE_API_KEY)
+                    
+                    # Execute search
+                    result = service.cse().list(
+                        q=claim.text,
+                        cx=GOOGLE_SEARCH_ENGINE_ID,
+                        num=3  # Get top 3 results
+                    ).execute()
+                    
+                    # Extract search results
+                    if 'items' in result:
+                        for item in result['items']:
+                            claim.evidence.append(Evidence(
+                                source=item.get('title', 'Unknown'),
+                                content=item.get('snippet', ''),
+                                url=item.get('link', '')
+                            ))
+                        print(f"Found {len(result['items'])} search results")
+                    else:
+                        print("No search results found")
+                        # Add fallback evidence
                         claim.evidence.append(Evidence(
-                            source=r.get('title', 'Unknown'),
-                            content=r.get('body', ''),
-                            url=r.get('href', '')
+                            source="Search Info",
+                            content=f"No search results found for: {claim.text}",
+                            url=""
                         ))
-                    print(f"Found {len(results)} search results")
+                else:
+                    print("WARNING: Google API credentials not set")
+                    # Add fallback evidence when API keys are missing
+                    claim.evidence.append(Evidence(
+                        source="Configuration Required",
+                        content=f"Search functionality requires Google API configuration. Claim: {claim.text}",
+                        url=""
+                    ))
             except Exception as e:
-                print(f"ERROR: DuckDuckGo search failed: {e}")
+                print(f"ERROR: Google Custom Search failed: {e}")
+                # Add error as evidence so array is never empty
                 claim.evidence.append(Evidence(
                     source="Search Error",
-                    content=f"Failed to perform web search: {str(e)}",
+                    content=f"Failed to perform web search: {str(e)}. Claim: {claim.text}",
                     url=""
                 ))
         
