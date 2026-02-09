@@ -156,8 +156,6 @@ class VerifyAgent:
         # Process Link
         if link:
             try:
-                import requests
-                from bs4 import BeautifulSoup
                 print(f"Fetching content from link: {link}")
                 response = requests.get(link, timeout=10)
                 response.raise_for_status()
